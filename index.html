@@ -218,6 +218,30 @@ header.top{
   .sheet{border-radius:18px; max-height:80vh; box-shadow:0 24px 60px rgba(0,0,0,0.5);}
 }
 @keyframes slideUp{from{transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+
+/* ===== Lightbox ===== */
+.lightbox{
+  position:fixed; inset:0; background:rgba(0,0,0,0.88); backdrop-filter:blur(6px);
+  display:none; align-items:center; justify-content:center; z-index:100;
+  cursor:zoom-out;
+}
+.lightbox.show{display:flex; animation:lbFadeIn .18s ease-out;}
+@keyframes lbFadeIn{from{opacity:0;} to{opacity:1;}}
+.lightbox img{
+  max-width:90vw; max-height:90vh; object-fit:contain;
+  border-radius:8px; box-shadow:0 8px 40px rgba(0,0,0,0.7);
+  animation:lbScaleIn .18s ease-out;
+  image-rendering:pixelated;
+}
+@keyframes lbScaleIn{from{transform:scale(0.88); opacity:0;} to{transform:scale(1); opacity:1;}}
+.lightbox .lbClose{
+  position:absolute; top:16px; right:16px;
+  width:36px; height:36px; border-radius:9px; border:1px solid rgba(255,255,255,0.2);
+  background:rgba(0,0,0,0.5); color:#fff; font-size:18px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.sheetHead .icon{cursor:pointer; transition:opacity .15s;}
+.sheetHead .icon:hover{opacity:0.8;}
 .closeBtn{
   margin-left:auto; width:32px; height:32px; border-radius:9px; border:1px solid var(--line);
   background:var(--ink-2); color:var(--parch-dim); font-size:16px; cursor:pointer; flex-shrink:0;
@@ -312,6 +336,11 @@ footer.credit{text-align:center; padding:22px 16px; color:var(--parch-faint); fo
 
 <footer class="credit">LC Items · Database Item Lineage Classic</footer>
 
+<div class="lightbox" id="lightbox" role="dialog" aria-label="Gambar besar">
+  <img id="lightboxImg" src="" alt="">
+  <button class="lbClose" id="lbClose" aria-label="Tutup">✕</button>
+</div>
+
 <div class="overlay" id="modal" aria-hidden="true">
   <div class="sheet" id="sheet">
     <div class="sheetHead">
@@ -367,6 +396,9 @@ const els = {
   grid:         document.getElementById('grid'),
   empty:        document.getElementById('empty'),
   modal:        document.getElementById('modal'),
+  lightbox:     document.getElementById('lightbox'),
+  lightboxImg:  document.getElementById('lightboxImg'),
+  lbClose:      document.getElementById('lbClose'),
   sheetIcon:    document.getElementById('sheetIcon'),
   sheetTitle:   document.getElementById('sheetTitle'),
   sheetCat:     document.getElementById('sheetCat'),
@@ -506,12 +538,26 @@ function updateFavDetailBtn(){
   els.favDetail.classList.toggle('active',fav);
 }
 
+function openLightbox(src, alt){
+  if(!src) return;
+  els.lightboxImg.src=src;
+  els.lightboxImg.alt=alt||'';
+  els.lightbox.classList.add('show');
+}
+function closeLightbox(){
+  els.lightbox.classList.remove('show');
+  els.lightboxImg.src='';
+}
+
 function openModal(id){
   const it=state.items.find(x=>x._id===id);
   if(!it) return;
   state.selected=it;
   const img=safe(it.image);
   els.sheetIcon.innerHTML=img?`<img src="${esc(img)}" alt="${esc(it.name)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'fallbackIcon',textContent:'⚔'}))">`:`<div class="fallbackIcon">⚔</div>`;
+  // allow clicking icon to open lightbox if there's an image
+  els.sheetIcon.onclick = img ? ()=>openLightbox(img, it.name) : null;
+  els.sheetIcon.style.cursor = img ? 'zoom-in' : '';
   els.sheetTitle.textContent=it.name;
   const col=PARENT_COLOR[it.parent]||'#9aa0b4';
   els.sheetCat.textContent=it.parent||'-';
@@ -565,6 +611,9 @@ function initUI(){
   els.favBtn.onclick=()=>{ state.onlyFav=!state.onlyFav; els.favBtn.classList.toggle('active',state.onlyFav); els.favBtn.textContent=state.onlyFav?'★ Favorit':'☆ Favorit'; render(); };
   els.closeModal.onclick=closeModal;
   els.modal.addEventListener('click',(e)=>{ if(e.target===els.modal) closeModal(); });
+  els.lbClose.onclick=closeLightbox;
+  els.lightbox.addEventListener('click',(e)=>{ if(e.target===els.lightbox||e.target===els.lightboxImg) closeLightbox(); });
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ if(els.lightbox.classList.contains('show')) closeLightbox(); else closeModal(); } });
   els.favDetail.onclick=()=>{ if(!state.selected) return; toggleFav(state.selected._id); updateFavDetailBtn(); render(true); };
   els.copyDetail.onclick=()=>{ if(!state.selected) return; copyText(formatItem(state.selected)); toast('Tersalin'); };
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeModal(); });
