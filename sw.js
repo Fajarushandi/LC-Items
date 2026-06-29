@@ -1,79 +1,86 @@
-// Naikkan nomor ini SETIAP kali kamu deploy update baru (termasuk kalau
-// nambah/edit item di items-full.json atau EMBEDDED_ITEMS).
-const VERSION = 'v1';
-const CACHE = `lc-itemdb-${VERSION}`;
-
-const ASSETS = [
+const CACHE = 'lc-app-runtime';
+const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/items-full.json',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-192-maskable.png',
   '/icon-512-maskable.png'
 ];
 
-self.addEventListener('install', e => {
-  e.waitUntil(
+self.addEventListener('install', event => {
+  event.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(ASSETS))
-      .catch(err => console.error('SW install cache failed:', err))
+      .then(cache => cache.addAll(STATIC_ASSETS))
+      .catch(() => {})
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
-      )
-    )
-  );
-  self.clients.claim();
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener('fetch', e => {
-  const req = e.request;
-
-  if (req.method !== 'GET') return;
-  if (new URL(req.url).origin !== self.location.origin) return;
-
-  const isNavigation = req.mode === 'navigate';
-  const isHtmlOrJsonOrJs = /\.(html|js|json)$/.test(req.url) || req.url.endsWith('/');
-
-  // Network-first untuk HTML/JS/JSON -> selalu coba versi terbaru dulu,
-  // fallback ke cache kalau offline. Penting khususnya untuk
-  // items-full.json supaya update item data baru langsung kepakai saat online.
-  if (isNavigation || isHtmlOrJsonOrJs) {
-    e.respondWith(
-      fetch(req)
-        .then(res => {
-          const resClone = res.clone();
-          caches.open(CACHE).then(c => c.put(req, resClone));
-          return res;
-        })
-        .catch(() => caches.match(req).then(cached => cached || caches.match('/index.html')))
-    );
-    return;
-  }
-
-  // Cache-first untuk asset statis (icon, manifest)
-  e.respondWith(
-    caches.match(req).then(cached => {
-      if (cached) return cached;
-      return fetch(req).then(res => {
-        const resClone = res.clone();
-        caches.open(CACHE).then(c => c.put(req, resClone));
-        return res;
-      }).catch(() => cached);
-    })
-  );
-});
-
-self.addEventListener('message', e => {
-  if (e.data === 'SKIP_WAITING') {
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING' || (event.data && event.data.type === 'SKIP_WAITING')) {
     self.skipWaiting();
   }
 });
+
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  const path = url.pathname;
+  const mustBeFresh =
+    req.mode === 'navigate' ||
+    path === '/' ||
+    path.endsWith('.html') ||
+    path.endsWith('.js') ||
+    path.endsWith('.json') ||
+    path.endsWith('/manifest.json') ||
+    path.endsWith('/sw.js');
+
+  if (mustBeFresh) {
+    event.respondWith(networkFirst(req));
+    return;
+  }
+
+  event.respondWith(staleWhileRevalidate(req));
+});
+
+async function networkFirst(req) {
+  const cache = await caches.open(CACHE);
+  try {
+    const fresh = await fetch(req, { cache: 'no-store' });
+    if (fresh && fresh.ok) await cache.put(req, fresh.clone());
+    return fresh;
+  } catch (err) {
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    if (req.mode === 'navigate') return cache.match('/index.html');
+    throw err;
+  }
+}
+
+async function staleWhileRevalidate(req) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(req);
+
+  const update = fetch(req, { cache: 'no-store' })
+    .then(res => {
+      if (res && res.ok) cache.put(req, res.clone());
+      return res;
+    })
+    .catch(() => null);
+
+  return cached || update || fetch(req);
+}
