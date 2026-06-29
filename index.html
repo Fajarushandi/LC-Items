@@ -34,12 +34,13 @@ body{
 
 /* ===== Header ===== */
 header.top{
-  position:sticky; top:0; z-index:30;
+  position:fixed; top:0; left:0; right:0; z-index:30;
   background:rgba(11,14,22,0.92);
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--line);
   padding:16px 16px 12px;
 }
+.headerSpacer{width:100%;}
 .brand{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
 .brand .mark{
   width:34px; height:34px; border-radius:9px;
@@ -255,6 +256,8 @@ footer.credit{text-align:center; padding:18px 16px; color:var(--parch-faint); fo
     </div>
   </div>
 </header>
+
+<div class="headerSpacer" id="headerSpacer"></div>
 
 <div class="statsRow">
   <span id="count">0 item ditemukan</span>
@@ -502,6 +505,14 @@ function closeModal(){
   els.modal.setAttribute('aria-hidden','true');
 }
 
+function syncHeaderSpacer(){
+  const h = document.querySelector('header.top').offsetHeight;
+  const sp = document.getElementById('headerSpacer');
+  if(sp) sp.style.height = h+'px';
+}
+window.addEventListener('resize', syncHeaderSpacer);
+window.addEventListener('orientationchange', syncHeaderSpacer);
+
 function initUI(){
   renderDropdowns();
   initDropdownToggle();
@@ -517,6 +528,7 @@ function initUI(){
   els.favDetail.onclick=()=>{ if(!state.selected) return; toggleFav(state.selected._id); updateFavDetailBtn(); render(true); };
   els.copyDetail.onclick=()=>{ if(!state.selected) return; copyText(formatItem(state.selected)); toast('Tersalin'); };
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeModal(); });
+  syncHeaderSpacer();
 }
 
 loadItems();
